@@ -70,6 +70,7 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		t.Fatalf("created response = %q, err = %v", createdResponse.Body.String(), err)
 	}
 	auditResponse := httptest.NewRecorder()
+	syncAudit(t, di)
 	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
 	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), "POST /api/ui/v1/tokens") {
 		t.Fatalf("audit response = %d: %s", auditResponse.Code, auditResponse.Body.String())
@@ -83,10 +84,25 @@ func TestTokenManagementAndMachineProxyIntegration(t *testing.T) {
 		t.Fatalf("proxy status = %d: %s", response.Code, response.Body.String())
 	}
 	auditResponse = httptest.NewRecorder()
+	syncAudit(t, di)
 	browser.ServeHTTP(auditResponse, httptest.NewRequest(http.MethodGet, "/api/ui/v1/audit/events", nil))
 	if auditResponse.Code != http.StatusOK || !strings.Contains(auditResponse.Body.String(), `"id":"token:`+created.ID+`"`) ||
 		!strings.Contains(auditResponse.Body.String(), `"displayName":"automation"`) {
 		t.Fatalf("token audit attribution = %d: %s", auditResponse.Code, auditResponse.Body.String())
+	}
+}
+
+// syncAudit commits everything the audit store has queued. Events are written
+// asynchronously, so a test that reads them straight after the request that
+// produced them needs a sync point.
+func syncAudit(t *testing.T, di do.Injector) {
+	t.Helper()
+	store := do.MustInvoke[*AuditRuntime](di).Store
+	if store == nil {
+		return
+	}
+	if err := store.Sync(t.Context()); err != nil {
+		t.Fatal(err)
 	}
 }
 
