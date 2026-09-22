@@ -47,22 +47,8 @@ func Run() error {
 	tokenServer := do.MustInvokeNamed[*http.Server](di, "token")
 	tokens := do.MustInvoke[*TokenRuntime](di)
 	audits := do.MustInvoke[*AuditRuntime](di)
-	if audits.Store != nil {
-		go func() {
-			ticker := time.NewTicker(24 * time.Hour)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-ticker.C:
-					if err := audits.Store.Cleanup(context.Background()); err != nil {
-						slog.Error("clean audit store", "error", err)
-					}
-				}
-			}
-		}()
-	}
+	// Retention runs on the audit store's own writer goroutine, which dies with
+	// the store. A ticker here would outlive audits.Close() on the error path.
 	defer func() {
 		if err := tokens.Close(); err != nil {
 			slog.Error("close token store", "error", err)
